@@ -102,6 +102,15 @@ def student_progress(
     return explain_student(snap, student_id)
 
 
+def _build_regional_block(
+    db: Session, plan_version: str, cutoff: str | None
+) -> dict[str, Any]:
+    """冻结时固化地区规则目录、例外与每段规则解释。"""
+    from .regional_services import freeze_block
+
+    return freeze_block(db, plan_version, cutoff)
+
+
 def freeze_semester(
     db: Session, *, plan_version: str, freeze_id: str
 ) -> tuple[Snapshot, bool]:
@@ -113,6 +122,7 @@ def freeze_semester(
 
     cutoff = max_event_id(db, plan_version)
     events = load_events(db, plan_version)
+    regional_block = _build_regional_block(db, plan_version, cutoff)
     snap = build_snapshot(
         events,
         plan_version=plan_version,
@@ -120,6 +130,7 @@ def freeze_semester(
         required_seconds=plan.required_seconds,
         freeze_id=freeze_id,
         event_cutoff_id=cutoff,
+        regional_compliance=regional_block,
     )
     row = insert_freeze(
         db,

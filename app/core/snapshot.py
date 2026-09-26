@@ -25,6 +25,7 @@ class Snapshot:
     generated_at: str
     event_cutoff_id: str | None
     students: list[dict[str, Any]]
+    regional_compliance: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -35,6 +36,7 @@ class Snapshot:
             "generated_at": self.generated_at,
             "event_cutoff_id": self.event_cutoff_id,
             "students": self.students,
+            "regional_compliance": self.regional_compliance,
         }
 
     @classmethod
@@ -47,6 +49,7 @@ class Snapshot:
             generated_at=data["generated_at"],
             event_cutoff_id=data.get("event_cutoff_id"),
             students=list(data.get("students", [])),
+            regional_compliance=data.get("regional_compliance"),
         )
 
 
@@ -85,6 +88,7 @@ def build_snapshot(
     freeze_id: str | None = None,
     event_cutoff_id: str | None = None,
     generated_at: datetime | None = None,
+    regional_compliance: dict[str, Any] | None = None,
 ) -> Snapshot:
     """执行确定性的业务处理。"""
     state: ReplayState = replay(
@@ -111,6 +115,7 @@ def build_snapshot(
         generated_at=generated_at.isoformat().replace("+00:00", "Z"),
         event_cutoff_id=event_cutoff_id,
         students=students,
+        regional_compliance=regional_compliance,
     )
 
 

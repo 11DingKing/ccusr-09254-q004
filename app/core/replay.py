@@ -15,6 +15,7 @@ from .clock import (
     to_utc,
     union_seconds,
 )
+from .regional import Activity, TrackPoint
 
 
 class EventType(StrEnum):
@@ -52,6 +53,7 @@ class CheckinRecord:
     start_utc: datetime
     end_utc: datetime
     status: CheckinStatus
+    payload: dict[str, Any] = field(default_factory=dict)
 
     @property
     def seconds(self) -> int:
@@ -117,6 +119,7 @@ def _parse_checkin(
         start_utc=start,
         end_utc=end,
         status=status,
+        payload=dict(event.payload),
     )
 
 
@@ -245,3 +248,90 @@ def explain_checkin(record: CheckinRecord, tz_name: str) -> dict[str, Any]:
             for day, seg_start, seg_end in segments
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# 跨地区活动提取
+# ---------------------------------------------------------------------------
+
+def parse_location_payload(
+    payload: dict[str, Any],
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]] | None, str | None]:
+    """从打卡 payload 解析静止地点 / 移动轨迹。
+
+    返回 (location, track, error)；二者互斥，校验失败时 error 非空。
+    """
+    location = payload.get("location")
+    track = payload.get("track")
+    if location is not None and track is not None:
+        return None, None, "location_and_track_conflict"
+    if location is not None:
+        if not isinstance(location, dict) or not location.get("region_code"):
+            return None, None, "invalid_location"
+        return (
+            {
+                "region_code": str(location["region_code"]),
+                "evidence_id": location.get("evidence_id"),
+            },
+            None,
+            None,
+        )
+    if track is not None:
+        if not isinstance(track, list) or not track:
+            return None, None, "invalid_track"
+        normalized: list[dict[str, Any]] = []
+        for point in track:
+            if (
+                not isinstance(point, dict)
+                or not point.get("at")
+                or not point.get("region_code")
+            ):
+                return None, None, "invalid_track_point"
+            normalized.append(
+                {
+                    "at": str(point["at"]),
+                    "region_code": str(point["region_code"]),
+                    "evidence_id": point.get("evidence_id"),
+                }
+            )
+        return None, normalized, None
+    return None, None, None
+
+
+def build_activities(records: list[CheckinRecord]) -> list[Activity]:
+    """把（已含导师确认状态的）打卡记录转成跨地区评估用的活动。"""
+    activities: list[Activity] = []
+    for record in records:
+        location, track_points, loc_error = parse_location_payload(
+            record.payload or {}
+        )
+        track: tuple[TrackPoint, ...] = ()
+        region_code: str | None = None
+        evidence_id: str | None = None
+        if loc_error is None and location is not None:
+            region_code = location["region_code"]
+            evidence_id = location["evidence_id"]
+        elif loc_error is None and track_points is not None:
+            track = tuple(
+                TrackPoint(
+                    at_utc=to_utc(datetime.fromisoformat(point["at"])),
+                    region_code=point["region_code"],
+                    evidence_id=point.get("evidence_id"),
+                )
+                for point in track_points
+            )
+        activities.append(
+            Activity(
+                event_id=record.event_id,
+                student_id=record.student_id,
+                activity_id=record.activity_id,
+                start_utc=record.start_utc,
+                end_utc=record.end_utc,
+                region_code=region_code,
+                evidence_id=evidence_id,
+                track=track,
+                parse_error=loc_error,
+                status=record.status.value,
+            )
+        )
+    return activities
