@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -25,6 +25,7 @@ class Snapshot:
     generated_at: str
     event_cutoff_id: str | None
     students: list[dict[str, Any]]
+    regional: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -35,6 +36,7 @@ class Snapshot:
             "generated_at": self.generated_at,
             "event_cutoff_id": self.event_cutoff_id,
             "students": self.students,
+            "regional": self.regional,
         }
 
     @classmethod
@@ -47,6 +49,7 @@ class Snapshot:
             generated_at=data["generated_at"],
             event_cutoff_id=data.get("event_cutoff_id"),
             students=list(data.get("students", [])),
+            regional=dict(data.get("regional", {})),
         )
 
 
@@ -85,6 +88,7 @@ def build_snapshot(
     freeze_id: str | None = None,
     event_cutoff_id: str | None = None,
     generated_at: datetime | None = None,
+    regional: dict[str, Any] | None = None,
 ) -> Snapshot:
     """执行确定性的业务处理。"""
     state: ReplayState = replay(
@@ -111,6 +115,7 @@ def build_snapshot(
         generated_at=generated_at.isoformat().replace("+00:00", "Z"),
         event_cutoff_id=event_cutoff_id,
         students=students,
+        regional=regional or {},
     )
 
 
